@@ -1,0 +1,24 @@
+  Determinando los proyectos que se van a restaurar...
+  Se ha restaurado C:\YTBEngine\YTB-Art\src\PixiEditor.Tilemap\PixiEditor.Tilemap.csproj (en 169 ms).
+  Se ha restaurado C:\YTBEngine\YTB-Art\src\PixiEditor.ChangeableDocument\PixiEditor.ChangeableDocument.csproj (en 344 ms).
+  6 de 8┬áproyectos est├ín actualizados para la restauraci├│n.
+  PixiEditor.Common -> C:\YTBEngine\YTB-Art\src\PixiEditor.Common\bin\Debug\net8.0\PixiEditor.Common.dll
+  Drawie.Numerics -> C:\YTBEngine\YTB-Art\src\Drawie\src\Drawie.Numerics\bin\Debug\net8.0\Drawie.Numerics.dll
+C:\Program Files\dotnet\sdk\8.0.419\Microsoft.Common.CurrentVersion.targets(2412,5): warning MSB3245: No se pudo resolver esta referencia. No se encuentra el ensamblado "Silk.NET.Core". Compruebe si el ensamblado existe en el disco. Si el c├│digo necesita esta referencia, podr├¡an producirse errores de compilaci├│n. [C:\YTBEngine\YTB-Art\src\Drawie\src\Drawie.RenderApi\Drawie.RenderApi.csproj]
+  Drawie.RenderApi -> C:\YTBEngine\YTB-Art\src\Drawie\src\Drawie.RenderApi\bin\Debug\net8.0\Drawie.RenderApi.dll
+  Drawie.Backend.Core -> C:\YTBEngine\YTB-Art\src\Drawie\src\Drawie.Backend.Core\bin\Debug\net8.0\Drawie.Backend.Core.dll
+  ChunkyImageLib -> C:\YTBEngine\YTB-Art\src\ChunkyImageLib\bin\Debug\net8.0\ChunkyImageLib.dll
+  PixiEditor.Tilemap -> C:\YTBEngine\YTB-Art\src\PixiEditor.Tilemap\bin\Debug\net8.0\PixiEditor.Tilemap.dll
+  PixiEditor.ChangeableDocument.Gen -> C:\YTBEngine\YTB-Art\src\PixiEditor.ChangeableDocument.Gen\bin\Debug\netstandard2.0\PixiEditor.ChangeableDocument.Gen.dll
+C:\YTBEngine\YTB-Art\src\PixiEditor.ChangeableDocument\Changeables\Graph\Nodes\TilemapLayerNode.cs(59,34): error CS1503: Argumento 1: no se puede convertir de 'double' a 'float' [C:\YTBEngine\YTB-Art\src\PixiEditor.ChangeableDocument\PixiEditor.ChangeableDocument.csproj]
+C:\YTBEngine\YTB-Art\src\PixiEditor.ChangeableDocument\Changeables\Graph\Nodes\TilemapLayerNode.cs(59,54): error CS1503: Argumento 2: no se puede convertir de 'double' a 'float' [C:\YTBEngine\YTB-Art\src\PixiEditor.ChangeableDocument\PixiEditor.ChangeableDocument.csproj]
+
+ERROR al compilar.
+
+C:\Program Files\dotnet\sdk\8.0.419\Microsoft.Common.CurrentVersion.targets(2412,5): warning MSB3245: No se pudo resolver esta referencia. No se encuentra el ensamblado "Silk.NET.Core". Compruebe si el ensamblado existe en el disco. Si el c├│digo necesita esta referencia, podr├¡an producirse errores de compilaci├│n. [C:\YTBEngine\YTB-Art\src\Drawie\src\Drawie.RenderApi\Drawie.RenderApi.csproj]
+C:\YTBEngine\YTB-Art\src\PixiEditor.ChangeableDocument\Changeables\Graph\Nodes\TilemapLayerNode.cs(59,34): error CS1503: Argumento 1: no se puede convertir de 'double' a 'float' [C:\YTBEngine\YTB-Art\src\PixiEditor.ChangeableDocument\PixiEditor.ChangeableDocument.csproj]
+C:\YTBEngine\YTB-Art\src\PixiEditor.ChangeableDocument\Changeables\Graph\Nodes\TilemapLayerNode.cs(59,54): error CS1503: Argumento 2: no se puede convertir de 'double' a 'float' [C:\YTBEngine\YTB-Art\src\PixiEditor.ChangeableDocument\PixiEditor.ChangeableDocument.csproj]
+    1 Advertencia(s)
+    2 Errores
+
+Tiempo transcurrido 00:00:05.64

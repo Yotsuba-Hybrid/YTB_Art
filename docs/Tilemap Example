@@ -1,0 +1,272 @@
+# Plan: Integrar un Editor de Tilemaps en PixiEditor (YTB-Art)
+
+## Contexto
+
+Un Editor de Tilemaps requiere integración **profunda** con el editor: un nuevo tipo de capa/nodo, herramientas dedicadas, un panel para seleccionar tiles, renderizado especial, y serialización. Esto **NO puede ser una extensión .pixiext** porque necesita acceso directo al grafo de nodos, al sistema de renderizado y al modelo de datos.
+
+## User Review Required
+
+> [!IMPORTANT]
+> **Decisión clave: ¿Proyecto separado o integrado?**
+> Un tilemap editor puede implementarse de dos formas:
+> 1. **Integrado directamente** en los proyectos existentes (`ChangeableDocument`, `PixiEditor`) — más simple, menos overhead, pero acopla el tilemap al editor core
+> 2. **Proyecto Class Library separado** (`PixiEditor.Tilemap`) para la lógica + integración en los proyectos existentes — más modular, permite reutilización
+>
+> **Mi recomendación:** Opción 2 (proyecto separado para la lógica del tilemap + hooks en los proyectos existentes). Es lo más limpio y sigue el patrón de `ChunkyImageLib` y `PixiEditor.SVG`.
+
+> [!WARNING]
+> El tilemap agrega un **nuevo tipo de capa** al documento. Esto significa que archivos `.pixi` guardados con tilemaps no serán compatibles con versiones anteriores del editor. ¿Es aceptable?
+
+---
+
+## Proposed Changes
+
+### Componente 1: Lógica del Tilemap (nuevo proyecto)
+
+El modelo de datos puro del tilemap, sin dependencias de UI ni del editor.
+
+#### [NEW] `src/PixiEditor.Tilemap/PixiEditor.Tilemap.csproj`
+
+```xml
+<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <TargetFramework>net8.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <RootNamespace>PixiEditor.Tilemap</RootNamespace>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\Drawie\src\Drawie.Backend.Core\Drawie.Backend.Core.csproj" />
+        <ProjectReference Include="..\Drawie\src\Drawie.Numerics\Drawie.Numerics.csproj" />
+        <ProjectReference Include="..\PixiEditor.Common\PixiEditor.Common.csproj" />
+    </ItemGroup>
+</Project>
+```
+
+**Dependencias:**
+- `Drawie.Backend.Core` → para `Texture`, `Canvas`, `Paint` (renderizado de tiles)
+- `Drawie.Numerics` → para `VecI`, `RectI`, `VecD` (coordenadas de grilla)
+- `PixiEditor.Common` → utilidades compartidas
+
+**Clases principales:**
+
+| Archivo | Propósito |
+|---|---|
+| `TilemapData.cs` | Modelo de datos: grilla 2D de IDs de tile + dimensiones de celda |
+| `Tileset.cs` | Conjunto de tiles: imagen fuente + subdivisión en celdas |
+| `TilesetEntry.cs` | Un tile individual: ID, posición en el tileset, metadata |
+| `TilemapRenderer.cs` | Renderiza un `TilemapData` + `Tileset` a un `Canvas` de Drawie |
+| `TilemapBrush.cs` | Lógica para "pintar" tiles en la grilla (single, rect fill, bucket) |
+
+```
+src/PixiEditor.Tilemap/
+├── PixiEditor.Tilemap.csproj
+├── TilemapData.cs           ← grilla int[,] con IDs de tiles
+├── Tileset.cs               ← imagen fuente + celdas
+├── TilesetEntry.cs          ← tile individual
+├── TilemapRenderer.cs       ← renderiza la grilla a Canvas
+├── TilemapBrush.cs          ← lógica de pintar tiles
+└── TilemapSerializer.cs     ← serialización del tilemap
+```
+
+---
+
+### Componente 2: Nodo del Grafo (en ChangeableDocument)
+
+Un `TilemapLayerNode` que se integra con el grafo de nodos existente, similar a `ImageLayerNode` pero para tilemaps.
+
+#### [NEW] `src/PixiEditor.ChangeableDocument/Changeables/Graph/Nodes/TilemapLayerNode.cs`
+
+Hereda de `LayerNode` (como `ImageLayerNode`). Expone:
+- El `TilemapData` como dato del nodo (grilla de tile IDs)
+- El `Tileset` asociado (imagen y configuración de celdas)
+- Los parámetros de grilla: `TileWidth`, `TileHeight`, `GridWidth`, `GridHeight`
+
+```csharp
+[NodeInfo("TilemapLayer")]
+public class TilemapLayerNode : LayerNode
+{
+    public TilemapData TilemapData { get; set; }
+    public Tileset Tileset { get; set; }
+    
+    // Inputs configurables en el grafo de nodos
+    public InputProperty<int> TileWidth { get; }    // ej: 16, 32, 64
+    public InputProperty<int> TileHeight { get; }
+    public InputProperty<bool> ShowGrid { get; }
+    
+    protected override void DrawWithoutFilters(...) 
+    {
+        // Usa TilemapRenderer para dibujar la grilla
+    }
+}
+```
+
+**Referencia:** sigue el patrón exacto de [ImageLayerNode.cs](file:///c:/YTBEngine/YTB-Art/src/PixiEditor.ChangeableDocument/Changeables/Graph/Nodes/ImageLayerNode.cs) que hereda `LayerNode → StructureNode → RenderNode → Node`.
+
+#### [NEW] Changes para el Tilemap
+
+Nuevas operaciones en `Changes/Tilemap/`:
+
+| Change | Qué hace |
+|---|---|
+| `PlaceTile_Change.cs` | Coloca un tile en una celda (con undo) |
+| `EraseTile_Change.cs` | Borra un tile de una celda |
+| `FillTileRegion_Change.cs` | Rellena un área rectangular de tiles |
+| `SetTileset_Change.cs` | Asigna/cambia el tileset |
+| `ResizeTilemapGrid_Change.cs` | Redimensiona la grilla |
+| `CreateTilemapLayer_Change.cs` | Crea una nueva capa tilemap |
+
+Cada uno decorado con `[GenerateMakeChangeAction]` para auto-generar las Actions.
+
+---
+
+### Componente 3: Herramienta de Tilemap (en PixiEditor)
+
+#### [NEW] `src/PixiEditor/ViewModels/Tools/Tools/TilemapBrushToolViewModel.cs`
+
+Herramienta para pintar tiles en la grilla. Hereda de `ToolViewModel`.
+
+```csharp
+[Tool(Key.T, Modifiers = KeyModifiers.Shift)]
+internal class TilemapBrushToolViewModel : ToolViewModel
+{
+    public override string ToolNameLocalizationKey => "TILEMAP_BRUSH";
+    public override Type[]? SupportedLayerTypes => [typeof(TilemapLayerNode)];
+    public override Type? ToolbarType => typeof(TilemapToolbar);
+}
+```
+
+#### [NEW] `src/PixiEditor/Models/Handlers/Tools/ITilemapBrushToolHandler.cs`
+
+#### [NEW] `src/PixiEditor/Models/DocumentModels/UpdateableChangeExecutors/TilemapBrushExecutor.cs`
+
+Traduce clicks/drags del puntero a coordenadas de grilla → `PlaceTile_Change`.
+
+#### [NEW] `src/PixiEditor/ViewModels/Tools/ToolSettings/Toolbars/TilemapToolbar.cs`
+
+Toolbar con: tile seleccionado, modo de brush (single/rect/fill), preview del tile.
+
+---
+
+### Componente 4: Panel de Tileset (en PixiEditor)
+
+#### [NEW] Panel acoplable (DockViewModel + Vista)
+
+Un panel donde el usuario:
+1. Carga una imagen como tileset (importar PNG/sprite sheet)
+2. Configura tamaño de celda (16x16, 32x32, etc.)
+3. Ve todas las celdas como una grilla de tiles seleccionables
+4. Selecciona el tile a pintar (click en la celda)
+
+| Archivo | Propósito |
+|---|---|
+| `ViewModels/Dock/TilesetDockViewModel.cs` | ViewModel del panel |
+| `Views/Dock/TilesetDockView.axaml` | Vista AXAML con la grilla de tiles |
+| `ViewModels/Document/TilesetViewModel.cs` | Modelo del tileset activo |
+
+---
+
+### Componente 5: Overlay de Grilla (en PixiEditor)
+
+#### [NEW] `src/PixiEditor/Views/Overlays/TilemapGridOverlay.cs`
+
+Dibuja la grilla de celdas sobre el canvas cuando hay una capa tilemap activa. Resalta la celda bajo el cursor.
+
+---
+
+### Componente 6: Serialización (en PixiEditor)
+
+#### [NEW] `src/PixiEditor/Models/Serialization/Factories/TilemapSerializationFactory.cs`
+
+Para que los tilemaps se guarden/carguen en archivos `.pixi`.
+
+---
+
+### Componente 7: Integración y Registro
+
+#### [MODIFY] [PixiEditor.csproj](file:///c:/YTBEngine/YTB-Art/src/PixiEditor/PixiEditor.csproj)
+Agregar `<ProjectReference Include="..\PixiEditor.Tilemap\PixiEditor.Tilemap.csproj"/>`
+
+#### [MODIFY] [PixiEditor.ChangeableDocument.csproj](file:///c:/YTBEngine/YTB-Art/src/PixiEditor.ChangeableDocument)
+Agregar `<ProjectReference Include="..\PixiEditor.Tilemap\PixiEditor.Tilemap.csproj"/>`
+
+#### [MODIFY] [ServiceCollectionHelpers.cs](file:///c:/YTBEngine/YTB-Art/src/PixiEditor/Helpers/ServiceCollectionHelpers.cs)
+```csharp
+// En AddPixiEditor(), agregar:
+.AddTool<ITilemapBrushToolHandler, TilemapBrushToolViewModel>()
+
+// En AddSerializationFactories(), agregar:
+.AddTransient<SerializationFactory, TilemapSerializationFactory>()
+```
+
+#### [MODIFY] [PixiEditor.sln](file:///c:/YTBEngine/YTB-Art/src/PixiEditor.sln)
+Agregar el proyecto `PixiEditor.Tilemap` a la solución.
+
+---
+
+## Resumen visual de dependencias
+
+```mermaid
+graph TD
+    subgraph "Nuevo"
+        TM["PixiEditor.Tilemap<br/>(lógica pura)"]
+        TMN["TilemapLayerNode<br/>(en ChangeableDocument)"]
+        TMT["TilemapBrushTool<br/>(en PixiEditor)"]
+        TMP["TilesetDockPanel<br/>(en PixiEditor)"]
+        TMO["TilemapGridOverlay<br/>(en PixiEditor)"]
+    end
+
+    subgraph "Existente"
+        CD["ChangeableDocument"]
+        PE["PixiEditor (UI)"]
+        DW["Drawie (renderizado)"]
+        CI["ChunkyImageLib"]
+    end
+
+    TM -->|depende de| DW
+    TMN -->|hereda de LayerNode| CD
+    TMN -->|usa| TM
+    TMT -->|modifica via Changes| CD
+    TMP -->|muestra tileset| TM
+    TMO -->|dibuja grilla| PE
+    CD -->|referencia| TM
+    PE -->|referencia| TM
+```
+
+---
+
+## Open Questions
+
+> [!IMPORTANT]
+> 1. **¿Tamaño fijo de tiles o variable?** ¿Los tiles siempre serán cuadrados (16x16, 32x32) o se permite rectangular (16x32)?
+> 2. **¿Multi-capa de tilemap?** ¿Se permiten múltiples capas de tilemap en el mismo documento (ej: suelo + decoración + colisión)?
+> 3. **¿Auto-tiling?** ¿Quieres reglas de auto-tile (como en RPG Maker o Godot) donde el tile se adapta según sus vecinos?
+> 4. **¿El tileset se embebe en el .pixi o se referencia como archivo externo?**
+> 5. **¿Animación de tiles?** ¿Tiles animados con varios frames?
+> 6. **¿Prioridad?** ¿Quieres implementar todo de golpe o empezar con un MVP (grilla simple + pintar/borrar tiles)?
+
+---
+
+## Verification Plan
+
+### Automated Tests
+```powershell
+# Compilar todo
+cd c:\YTBEngine\YTB-Art\src
+dotnet build PixiEditor.sln -c Debug
+
+# Tests unitarios del modelo de tilemap
+dotnet test PixiEditor.Tilemap.Tests
+
+# Tests existentes para asegurar que no se rompe nada
+dotnet test
+```
+
+### Manual Verification
+- Crear un documento nuevo → agregar capa tilemap
+- Importar un tileset PNG → verificar la grilla de selección
+- Pintar tiles con la herramienta → verificar renderizado
+- Guardar como .pixi → cerrar → reabrir → verificar que el tilemap se restaura
+- Undo/redo de colocación de tiles
+- Zoom in/out → verificar que la grilla overlay se ve correcta
